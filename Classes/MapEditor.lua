@@ -1623,6 +1623,36 @@ function Editor:set_listener_active(active)
 	end
 end
 
+function Editor:_unit_raycasts( mask, ray_type, from, to )
+	local from = from or self:get_cursor_look_point(0)
+	local to = to or self:get_cursor_look_point(200000)
+	local rays
+	if ray_type then
+		rays = World:raycast_all("ray", from, to, "ray_type", ray_type, "slot_mask", mask)
+	else
+		rays = World:raycast_all(from, to, nil, mask)
+	end
+	return rays
+end
+
+function Editor:unit_by_raycast(data)
+	local rays = self:_unit_raycasts(data.mask, data.ray_type, data.from, data.to)
+	if rays then
+		for _,ray in ipairs(rays) do
+			if data.sample then
+				if ray.unit and ray.unit:visible() then
+					return ray
+				end
+			else
+                -- Not used atm
+				-- if self:select_unit_ok_conditions(ray.unit, nil, data.skip_instance_check) then
+				-- 	return ray
+				-- end
+			end
+		end
+	end
+	return nil
+end
 
 --Empty/Unused functions
 function Editor:register_message()end

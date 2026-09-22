@@ -37,7 +37,7 @@ function AiEditor:init(parent)
     self._ai_settings = {}
     self._created_units = {}
     self._units = {}
-    self._disabled_units = {}
+    self._saved_disabled_units = {}
 
     --self:_init_ai_settings()
     --self:_init_mop_settings()
@@ -109,34 +109,32 @@ function AiEditor:build_menu()
     local graphs = self._holder:group("Graphs", {align_method = "grid"})
     local spawn = self:GetPart("spawn")
     graphs:button("SpawnNavSurface", ClassClbk(spawn, "begin_spawning", "core/units/nav_surface/nav_surface"))
-    graphs:button("SaveNavigationData", ClassClbk(self:part("opt"), "save_nav_data", false), { enabled = self._parent._parent._has_fix })
-    graphs:button("CalculateAll", ClassClbk(self, "build_nav_segments", "all"), { enabled = self._parent._parent._has_fix, size_by_text = true })
-    graphs:button("CalculateSelected", ClassClbk(self, "build_nav_segments", "selected"), { enabled = self._parent._parent._has_fix, size_by_text = true })
-    --[[
-        graphs:button(
-            "CalculateAll",
-            ClassClbk(
-                self,
-                "_calc_graphs",
-                {
-                    vis_graph = true,
-                    build_type = "all"
-                }
-            )
-        )
+    graphs:button("SaveNavigationData", ClassClbk(self:part("opt"), "save_nav_data"), {
+        enabled = self._parent._parent._has_fix,
+    })
+    graphs:button("CalculateAll", ClassClbk(self, "_calc_graphs", {build_type = "all", vis_graph = true}), {
+        enabled = self._parent._parent._has_fix,
+        size_by_text = true
+    })
+    graphs:button("CalculateSelected", ClassClbk(self, "_calc_graphs", {build_type = "selected", vis_graph = true}), {
+        enabled = self._parent._parent._has_fix,
+        size_by_text = true
+    })
+    graphs:button("CalculateGroundAll", ClassClbk(self, "_calc_graphs", {build_type = "all", vis_graph = false}), {
+        enabled = self._parent._parent._has_fix,
+        size_by_text = true
+    })
+    graphs:button("CalculateGroundSelected", ClassClbk(self, "_calc_graphs", {build_type = "selected", vis_graph = false}), {
+        enabled = self._parent._parent._has_fix,
+        size_by_text = true
+    })
 
-        graphs:button(
-            "CalculateSelected",
-            ClassClbk(
-                self,
-                "_calc_graphs",
-                {
-                    vis_graph = true,
-                    build_type = "selected"
-                }
-            )
-        )
-    ]]
+    local builde_settings = self._holder:group("BuildSettings")
+
+    self._all_visible = builde_settings:tickbox("AllVisible", nil, true)
+
+    self._ray_length = builde_settings:numberbox("RayLength", nil, 150)
+
     graphs:button("DeleteAll", ClassClbk(self, "_clear_graphs"), {size_by_text = true})
     graphs:button("DeleteSelected", ClassClbk(self, "_clear_selected_nav_segment"), {size_by_text = true})
 
@@ -175,6 +173,8 @@ function AiEditor:build_menu()
         self:part("spawn"):begin_spawning("units/dev_tools/level_tools/ai_coverpoint", nil, nil, true)
     end)
     other:button("SaveCoverData", ClassClbk(self:part("opt"), "save_cover_data", false))
+
+    self:set_debug_draw_state()
 end
 
 function AiEditor:set_draw_patrol_paths(item)
@@ -525,12 +525,13 @@ end
 function AiEditor:_draw_surface(unit, t, dt, a, r, g, b)
     local rot1 = Rotation(math.sin(t * 10) * 180, 0, 0)
     local rot2 = rot1 * Rotation(90, 0, 0)
-    local pos1 = unit:position() - rot1:y() * 100
-    local pos2 = unit:position() - rot2:y() * 100
+	local pos1 = unit:position() - rot1:y() * 100 + rot1:z()
+	local pos2 = unit:position() - rot2:y() * 100 + rot2:z()
 
-    Application:draw_line(pos1, pos1 + rot1:y() * 200, r, g, b)
-    Application:draw_line(pos2, pos2 + rot2:y() * 200, r, g, b)
-    self._brush:quad(pos1, pos2, pos1 + rot1:y() * 200, pos2 + rot2:y() * 200)
+	self._brush:quad(pos1, pos2, pos1 + rot1:y() * 200, pos2 + rot2:y() * 200)
+	Application:draw_line(pos1, pos1 + rot1:y() * 200, r, g, b)
+	Application:draw_line(pos2, pos2 + rot2:y() * 200, r, g, b)
+	Application:draw(unit, r, g, b)
 end
 
 function AiEditor:_draw_patrol_paths(t, dt)
@@ -592,10 +593,6 @@ function AiEditor:draw_patrol_path_externaly(name)
     self:_draw_patrol_path(name, managers.ai_data:patrol_path(name))
 end
 
-function AiEditor:_calc_graphs(params)
-    -- TODO
-end
-
 function AiEditor:_clear_graphs()
     EU:YesNoQuestion("Do you want to delete all nav segments?", function()
         for _, unit in pairs(World:find_units_quick("all")) do
@@ -631,6 +628,12 @@ function AiEditor:set_debug_draw_state()
     for name, item in pairs(self._draw_options) do
         options[name] = item:Value()
     end
+
+    managers.navigation:_unregister_cover_units()
+
+	if options.covers then
+		managers.navigation:register_cover_units()
+	end
 
     if managers.navigation then
         managers.navigation:set_debug_draw_state(options)
@@ -744,9 +747,10 @@ function AiEditor:data()
     return self._parent:data().ai_settings
 end
 
-function AiEditor:build_nav_segments(build_type)
+function AiEditor:_calc_graphs(params)
     -- Add later the options to the menu
     local text = "This will save the map, disable the player and AI, build the nav data and reload the game. Proceed?"
+    local build_type = params.build_type
     if build_type == "selected" then
         if managers.editor._running_simulation then
             BLE.Utils:Notify("Error!", "Cannot calculate selected while playtest is running.")
@@ -761,15 +765,22 @@ function AiEditor:build_nav_segments(build_type)
         local settings = {}
         local nav_surfaces = {}
 
+        if build_type == "all" then
+            managers.navigation:clear()
+        end
+
         local persons = managers.slot:get_mask("persons")
 
         --first disable the units so the raycast will know.
         for _, unit in pairs(World:find_units_quick("all")) do
             local is_person = unit:in_slot(persons)
             local ud = unit:unit_data()
-            if is_person or (ud and ud.disable_on_ai_graph) then
+            if unit:name() == self._nav_surface_unit and (build_type == "all" or table.contains(self:selected_units(), unit)) then
+                log(unit:name(), self._nav_surface_unit)
+                table.insert(nav_surfaces, unit)
+            elseif is_person or (ud and ud.disable_on_ai_graph) then
                 unit:set_enabled(false)
-                table.insert(self._disabled_units, unit)
+                table.insert(self._saved_disabled_units, unit)
 
                 if is_person then
                     --Why are they active even though the main unit is disabled? Good question.
@@ -781,14 +792,18 @@ function AiEditor:build_nav_segments(build_type)
                         unit:set_extension_update_enabled(extension:id(), false)
                     end
                 end
-            elseif unit:name() == self._nav_surface_unit and (build_type == "all" or table.contains(self:selected_units(), unit)) then
-                table.insert(nav_surfaces, unit)
             end
         end
         local editor_ids = {}
         local duplicate_id_unit
         for _, unit in pairs(nav_surfaces) do
-            local ray = World:raycast(unit:position() + Vector3(0, 0, 50), unit:position() - Vector3(0, 0, 150), nil, managers.slot:get_mask("all"))
+            local ray = managers.editor:unit_by_raycast({
+                mask = managers.slot:get_mask("all"),
+                from = unit:position() + Vector3(0, 0, 50),
+                to = unit:position() - Vector3(0, 0, 150),
+                sample = true
+            })
+            
             if ray and ray.position then
                 local editor_id = unit:editor_id()
                 if table.contains(editor_ids, editor_id) then
@@ -836,42 +851,49 @@ function AiEditor:build_nav_segments(build_type)
             return
         end
 
-        if build_type == "all" then
-            managers.navigation:clear()
-        end
-        managers.navigation:build_nav_segments(settings, ClassClbk(self, "build_visibility_graph", build_type))
-
+        managers.navigation:build_nav_segments(settings, ClassClbk(self, "_graphs_done", params.vis_graph))
     end)
 end
 
 function AiEditor:reenable_disabled_units()
-    for _, unit in pairs(self._disabled_units) do
-        if alive(unit) then
+    for _, unit in pairs(self._saved_disabled_units) do
+        if alive(unit) and unit:in_slot(managers.slot:get_mask("persons")) then
             unit:set_enabled(true)
-            if unit:in_slot(managers.slot:get_mask("persons")) then
-                for _, extension in pairs(unit:extensions()) do
-                    unit:set_extension_update_enabled(extension:id(), true)
-                end
+            for _, extension in pairs(unit:extensions()) do
+                unit:set_extension_update_enabled(extension:id(), true)
             end
         end
     end
-    self._disabled_units = {}
+    self._saved_disabled_units = {}
 end
 
-function AiEditor:build_visibility_graph(build_type)
-    local all_visible = true
+function AiEditor:_graphs_done(vis_graph)
+	managers.editor:output("Navigation seqments calculated")
+	for _, unit in ipairs(self._saved_disabled_units) do
+        if alive(unit) and not unit:in_slot(managers.slot:get_mask("persons")) then
+            unit:set_enabled(true)
+        end
+	end
+
+	if vis_graph then
+		self:_build_visibility_graph()
+	end
+end
+
+function AiEditor:_build_visibility_graph(build_type)
+    local all_visible = self._all_visible:Value()
     local exclude, include
     if not all_visible then
         exclude = {}
         include = {}
         for _, unit in ipairs(World:find_units_quick("all")) do
-            if unit:name() == Idstring("core/units/nav_surface/nav_surface") then
+            if unit:name() == self._nav_surface_unit then
                 exclude[unit:unit_data().unit_id] = unit:ai_editor_data().visibilty_exlude_filter
                 include[unit:unit_data().unit_id] = unit:ai_editor_data().visibilty_include_filter
             end
         end
     end
-    local ray_lenght = 150
+    local ray_lenght = self._ray_length:Value()
     managers.navigation:build_visibility_graph(ClassClbk(self, "_visibility_graph_done", build_type), all_visible, exclude, include, ray_lenght)
 end
 
