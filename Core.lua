@@ -32,6 +32,8 @@ function BLE:Init()
         self:GeneratePackageData()
         FileIO:Delete(packages_file)
     end
+
+    Application:set_force_editor_physics_bodies(Global.editor_mode)
 end
 
 function BLE:Dofiles(path)
@@ -86,12 +88,6 @@ function BLE:InitManagers(data)
     data = data or {}
     if not self.ConstPackages then
         self:LoadHashlist()
-    end
-
-    if Global.editor_mode then
-        Application:set_force_editor_physics_bodies(true)
-    else
-        Application:set_force_editor_physics_bodies(false)
     end
 
     Hooks:PostHook(MenuCallbackHandler, "change_resolution", "reload_to_fix_res", function()
