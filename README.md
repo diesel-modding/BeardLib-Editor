@@ -11,9 +11,10 @@ BeardLib-Editor is a tool that allows you to edit and create things like maps & 
 If you install the dev branch, make sure you have the latest BeardLib commit https://github.com/diesel-modding/PAYDAY-2-BeardLib it's possible that branch uses unreleased features not found in the public (MWS) version.
 
 ## Guides
-https://www.youtube.com/playlist?list=PLRSASA7UrjTsX1WWG6kStRTK51DKSEDPn \
-https://wiki.modworkshop.net/books/beardlib-editor-tutorials \
-https://www.payday2maps.net/guides/
+* https://www.youtube.com/playlist?list=PLRSASA7UrjTsX1WWG6kStRTK51DKSEDPn
+* https://wiki.modworkshop.net/books/beardlib-editor-tutorials
+* https://www.payday2maps.net/guides/
+* https://youtu.be/r1DpG2NDAts
 
 ## Report a Bug/Request a Feature
 https://github.com/diesel-modding/BeardLib-Editor/issues
