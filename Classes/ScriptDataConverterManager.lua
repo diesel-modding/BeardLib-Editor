@@ -129,6 +129,11 @@ function SConverter:RefreshFilesAndFolders()
     end
     if files then
         table.sort(files)
+       
+
+        local sd_types = clone(BLE._config.script_data_types)
+        table.insert(sd_types, "bin")
+
         for i, file in pairs(files) do
             local file_parts = string.split(file, "%.")
             local extension = file_parts[#file_parts]
@@ -136,7 +141,7 @@ function SConverter:RefreshFilesAndFolders()
             if self.assets and not PackageManager:has(extension:id(), (self.current_script_path .. file_parts[1]):id()) then
                 enabled = false
             end
-            if table.contains(BLE._config.script_data_types, extension) or table.contains(BLE._config.script_data_formats, extension) then
+            if table.contains(sd_types, extension) or table.contains(BLE._config.script_data_formats, extension) then
                 filesgroup:button(file, ClassClbk(self, "FileClick"), {text = file, base_path = self.current_script_path .. file, enabled = enabled})
             end
         end
