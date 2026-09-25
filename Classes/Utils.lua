@@ -421,19 +421,19 @@ function Utils:FilterList(a,b)
     menu:AlignItems()
 end
 
-local mb = 1048576
 function Utils:GetPackageSize(package)
-    local bundle = "assets/" .. (package:find("/") and package:key() or package) .. ".bundle"
-    if FileIO:Exists(bundle) then
-        local file = io.open(bundle, "rb")
-        if file then
-            local size = tonumber(file:seek("end")) / mb
-            file:close()
-            return size
-        else
-            return false
-        end
+    local pkg = BLE.DBPackages[package]
+    if not pkg then
+        BLE:log("[GetPackageSize] Package doesn't exist", package)
+        return 0
     end
+
+    local count = 0
+    for _, assets  in pairs(BLE.DBPackages[package]) do
+        count = count + table.size(assets)
+    end
+
+    return count
 end
 
 Utils.core_units = {
@@ -453,7 +453,7 @@ function Utils:IsLoaded(asset, type, packages)
         return true
     end
     for name, package in pairs(packages or BLE.DBPackages) do
-        if not name:begins("all_") and package[type] and package[type][asset] then
+        if package[type] and package[type][asset] then
             return true
         end
     end
@@ -462,7 +462,7 @@ end
 
 function Utils:InAllPackage(asset, type, packages)
     for name, package in pairs(packages or BLE.DBPackages) do
-        if name:begins("all_") and package[type] and package[type][asset] then
+        if package[type] and package[type][asset] then
             return true
         end
     end
@@ -476,15 +476,13 @@ end
 function Utils:GetPackages(asset, type, size_needed, first, packages)
     local found_packages = {}
     for name, package in pairs(packages or BLE.DBPackages) do
-        if not name:begins("all_") and package[type] and package[type][asset] then
+        if package[type] and package[type][asset] then
             local custom = CustomPackageManager.custom_packages[name:key()] ~= nil
             local package_size = not custom and size_needed and self:GetPackageSize(name)
             if not size_needed or package_size or custom then
-                if not name:begins("all_") then
-                    table.insert(found_packages, {name = name, package_size = package_size, custom = custom})
-                    if first then
-                        return found_packages
-                    end
+                table.insert(found_packages, {name = name, package_size = package_size, custom = custom})
+                if first then
+                    return found_packages
                 end
             end
         end
@@ -925,10 +923,10 @@ function Utils:Unhash(ids, type)
 end
 
 function Utils:UnhashStr(ids)
-    if not BLE.DBPaths.other then
+    if not BLE.HashlistDict then
         return nil
     end
-    return BLE.DBPaths.other[ids:key()] or nil
+    return BLE.HashlistDict[ids:key()] or nil
 end
 
 function Utils:Notify(title, msg, clbk)

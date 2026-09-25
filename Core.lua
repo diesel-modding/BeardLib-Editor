@@ -27,10 +27,11 @@ function BLE:Init()
     end)
     Hooks:Add("MenuManagerPopulateCustomMenus", "BeardLibEditorInitManagers", ClassClbk(BLE, "InitManagers"))
 
-    local packages_file = Path:Combine(self.ModPath, "packages.txt")
-    if FileIO:Exists(packages_file) then
-        self:GeneratePackageData()
-        FileIO:Delete(packages_file)
+
+    local saved_game_ver = io.open(Path:Combine(self.ModPath, "Data/game_version.txt"), "r")
+    local game_ver = Application:version()
+    if not saved_game_ver or saved_game_ver:read("a") ~= game_ver then
+        self:GenerateData()
     end
 
     Application:set_force_editor_physics_bodies(Global.editor_mode)
@@ -87,7 +88,7 @@ end
 function BLE:InitManagers(data)
     data = data or {}
     if not self.ConstPackages then
-        self:LoadHashlist()
+        self:LoadData()
     end
 
     Hooks:PostHook(MenuCallbackHandler, "change_resolution", "reload_to_fix_res", function()
@@ -253,13 +254,13 @@ function BLE:AskToDownloadData()
         {"Yes", function()
             BeardLib.Menus.Mods:SetEnabled(true)
             BeardLib.Menus.Mods:ForceDownload(self.DataFilesUpdate, function()
-                self:LoadHashlist()
+                self:LoadData()
             end)
         end}
     })
 end
 
-function BLE:LoadHashlist()
+function BLE:LoadData()
     if not FileIO:Exists(Path:Combine(self.ModPath, "Data", "Paths.bin")) then
         self._disabled = true
         Hooks:Add("MenuManagerOnOpenMenu", "BeardLibShowErrors", function(_, menu)
@@ -272,9 +273,10 @@ function BLE:LoadHashlist()
 
     local t = os.clock()
     self:log("Loading DBPaths")
-    if Global.DBPaths and Global.DBPackages and Global.WorldSounds then
+    if Global.DBPaths and Global.DBPackages and Global.WorldSounds and Global.HashlistDict then
         self.DBPaths = clone(Global.DBPaths)
         self.DBPackages = clone(Global.DBPackages)
+        self.HashlistDict = clone(Global.HashlistDict)
         self.WorldSounds = Global.WorldSounds
         self.DefaultAssets = Global.DefaultAssets
         self.Brushes = Global.Brushes
@@ -283,6 +285,7 @@ function BLE:LoadHashlist()
 	else
         self.DBPaths = FileIO:ReadScriptData(Path:Combine(self.DataDirectory, "Paths.bin"), "binary")
         self.DBPackages = FileIO:ReadScriptData(Path:Combine(self.DataDirectory, "PackagesPaths.bin"), "binary")
+        self.HashlistDict = FileIO:ReadScriptData(Path:Combine(self.DataDirectory, "HashlistDict.bin"), "binary")
         self.WorldSounds = FileIO:ReadScriptData(Path:Combine(self.DataDirectory, "WorldSounds.bin"), "binary")
         self.Brushes = string.split(FileIO:ReadFrom(Path:Combine(self.DataDirectory, "Brushes.txt"), "r"), "\n")
         self.DefaultAssets = FileIO:ReadScriptData(Path:Combine(self.DataDirectory, "DefaultAssets.bin"), "binary")
@@ -295,6 +298,7 @@ function BLE:LoadHashlist()
         Global.DefaultAssets = self.DefaultAssets
         Global.Brushes = self.Brushes
         Global.WwiseBanks = self.WwiseBanks
+        Global.HashlistDict = self.HashlistDict
     end
     local script_data_types = clone(self._config.script_data_types)
     for _, pkg in pairs(CustomPackageManager.custom_packages) do
@@ -309,59 +313,85 @@ function BLE:LoadHashlist()
 end
 
 --Converts a list of packages - assets of packages to premade tables to be used in the editor
-function BLE:GeneratePackageData()
-    local types = table.list_add(clone(self._config.script_data_types), {"unit", "texture", "movie", "effect", "scene"})
-    local file = io.open(self.ModPath .. "packages.txt", "r")
+function BLE:GenerateData()
+    self:log("[GenerateData] Generating Data...")
+    self:log("[GenerateData] Generating hashlist data...")
+    self:GenerateHashlistData()
+    self:log("[GenerateData] Generating brush data...")
+    self:GenerateBrushData()
+    self:log("[GenerateData] Generating sound data...")
+    self:GenerateSoundData()
+    -- self:GenerateDefaultAssetsData()
+
+    self:log("[GenerateData] Done!")
+
+    local game_ver = io.open(Path:Combine(self.ModPath, "Data/game_version.txt"), "w+")
+    if game_ver then
+        game_ver:write(Application:version())
+    end
+end
+
+function BLE:GenerateHashlistData()
+    self:log("[GenerateHashlistData] Reading hashlist...")
+
     local packages_paths = {}
     local paths = {}
-	local current_pkg
-	local current_pkg_ids
-    self:log("[GeneratePackageData] Writing package data...")
-    if file then
-        for line in file:lines() do
-            if string.sub(line, 1, 1) == "@" then
-				current_pkg = string.sub(line, 2)
-				current_pkg_ids = line:sub(2, 9) == "Idstring"
-			elseif current_pkg then
-				local pkg
-				if not current_pkg_ids then
-					packages_paths[current_pkg] = packages_paths[current_pkg] or {}
-					pkg = packages_paths[current_pkg]
-                end
+    local hashlist_dict = {}
 
-                if current_pkg == "other" then
-                    paths.other = paths.other or {}
-                    paths.other[line:key()] = line
-                else
-                    local path, typ = unpack(string.split(line, "%."))
-                    if pkg then
-                        if typ then -- Added typ check here
-                            pkg[typ] = pkg[typ] or {}
-                        end
-                    end
-                    if typ then -- Added typ check here
-                        paths[typ] = paths[typ] or {}
+    local hashlist = io.open("assets/hashlist")
+    if not hashlist then
+        self:log("[GenerateHashlistData] Hashlist is missing... Try validating your game or ensure you are on Diesel V3")
+        return
+    end
 
-                        if DB:has(typ, path) then
-                            paths[typ][path] = true
-                            if pkg then
-                                pkg[typ][path] = true
-                            end
+    local lines = hashlist:read("a"):split("\n")
+
+    self:log("[GenerateHashlistData] Finding packages and their assets...")
+
+    for _, line in pairs(lines) do
+        hashlist_dict[line:key()] = line
+
+        for asset_type in pairs(BeardLib.Constants.FileTypes) do
+            paths[asset_type] = paths[asset_type] or {}
+            if DB:has(asset_type, line) then
+                paths[asset_type][line] = true
+            end
+        end
+
+        if DB:has("package", line) then
+            local package = BLE.Utils:ParseXml("package", line)
+            packages_paths[line] = packages_paths[line] or {}
+            for asset_type_node in package:children() do
+                if asset_type_node:name() ~= "streaming" then
+                    for asset in asset_type_node:children() do
+                        local asset_type = asset:name()
+                        packages_paths[line][asset_type] = packages_paths[line][asset_type] or {}
+                        paths[asset_type] = paths[asset_type] or {} -- Just in case
+
+                        local path = asset:parameter("name")
+                        if DB:has(asset_type, path) then
+                            packages_paths[line][asset_type][path] = true
+                            paths[asset_type][path] = true -- Just in case
                         end
                     end
                 end
             end
         end
-        file:close()
-        self:log("[GeneratePackageData] Done!")
-    else
-        self:log("[GeneratePackageData] packages.txt is missing...")
     end
+
+    self:log("[GenerateHashlistData] Writing hashlist data...")
 
     FileIO:WriteScriptData(Path:Combine(self.ModPath, "Data", "Paths.bin"), paths, "binary")
     FileIO:WriteScriptData(Path:Combine(self.ModPath, "Data", "PackagesPaths.bin"), packages_paths, "binary")
-    Global.DBPaths = nil
-    self:LoadHashlist()
+    FileIO:WriteScriptData(Path:Combine(self.ModPath, "Data", "HashlistDict.bin"), hashlist_dict, "binary")
+
+    self.DBPackages = packages_paths
+    self.DBPaths = paths
+    self.HashlistDict = hashlist_dict
+
+    Global.DBPackages = self.DBPackages
+    Global.DBPaths = self.DBPaths
+    Global.HashlistDict = self.HashlistDict
 end
 
 function BLE:GenerateBrushData()
@@ -398,6 +428,9 @@ function BLE:GenerateBrushData()
             end
         end
     end
+
+    self:log("[GenerateBrushData] Writing brush data...")
+
     FileIO:WriteTo(Path:Combine(BLE.DataDirectory, "Brushes.txt"), table.concat(brush_units, "\n"), "w")
     self.Brushes = brush_units
     Global.Brushes = brush_units
@@ -406,8 +439,9 @@ end
 --Gets all emitters and occasionals from extracted .world_sounds
 function BLE:GenerateSoundData()
     local sounds = {}
-    for _, file in pairs(self.DBPaths.world_sounds) do
+    for file in pairs(self.DBPaths.world_sounds) do
         local data = self.Utils:ParseXml("world_sounds", file, true)
+        
         if not table.contains(sounds, data.default_ambience) then
             table.insert(sounds, data.default_ambience)
         end
@@ -433,6 +467,9 @@ function BLE:GenerateSoundData()
             end
         end
     end
+
+    self:log("[GenerateBrushData] Writing sound data...")
+
     FileIO:WriteScriptData(Path:Combine(self.ModPath, "Data", "WorldSounds.bin"), sounds, "binary")
     self.WorldSounds = sounds
     Global.WorldSounds = sounds
@@ -440,6 +477,8 @@ end
 
 --Uses a completely empty map to find out which assets are always loaded, this will help save map file size, might be dangerous though.
 --We use _has instead of has so we can exclude any custom assets.
+--TODO: replace with something safer
+-- Someone may have some mod that affects this data so it would be better to see which packages are loaded by default
 function BLE:GenerateDefaultAssetsData()
     self.DefaultAssets = {}
     for typ, v in pairs(self.DBPaths) do

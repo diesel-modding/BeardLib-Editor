@@ -218,7 +218,7 @@ function AssetsManagerDialog:show_packages()
                 local custom = CustomPackageManager.custom_packages[package:key()] ~= nil
                 local size = not custom and BLE.Utils:GetPackageSize(package)
                 if size or custom then
-                    local text = custom and string.format("%s (custom)", package, size) or string.format("%s(%.3fmb)", package, size)
+                    local text = custom and string.format("%s (custom)", package, size) or string.format("%s(%d+ assets)", package, size)
                     local pkg = packages:divider(package, {text = text, label = "packages"})
                     pkg:tb_imgbtn("RemovePackage", ClassClbk(self, "remove_package", package), nil, BLE.Utils.EditorIcons.cross)
                 end
@@ -291,7 +291,7 @@ function AssetsManagerDialog:find_package(path, typ, dontask, clbk)
 		local items = {}
 
         for _, pkg in pairs(BLE.Utils:GetPackages(path or self._tbl._selected.name, typ or self._tbl._selected.asset_type, true)) do
-            local text = pkg.custom and string.format("%s (custom)", pkg.name) or string.format("%s(%.3fmb)", pkg.name, pkg.package_size)
+            local text = pkg.custom and string.format("%s (custom)", pkg.name) or string.format("%s (%d+ assets)", pkg.name, pkg.package_size)
             table.insert(items, {name = text, package_size = pkg.package_size, package = pkg.name})
 		end
 
@@ -516,7 +516,7 @@ function AssetsManagerDialog:find_packages(missing_assets, clbk)
         local size = BLE.Utils:GetPackageSize(name)
         if size then
             table.insert(items, {
-                name = string.format("%s has %s/%s of the missing assets(%.3fmb)", name, #package, missing_amount, size),
+                name = string.format("%s has %s/%s of the missing assets (package contains %d+ assets)", name, #package, missing_amount, size),
                 package = name,
                 package_size = size,
                 amount = #package,
@@ -571,7 +571,7 @@ end
 function AssetsManagerDialog:package_report()
     local packages = {}
     for name, package in pairs(BLE.DBPackages) do
-        if not name:begins("all_") and not name:ends("_init") then
+        if not name:ends("_init") then
             if package.unit and not name:find("instances") and not name:find("only") then
                 table.insert(packages, {package = name, name = name})
             end
@@ -933,7 +933,7 @@ function AssetsManagerDialog:add_package_dialog()
     self._current_level.packages = self._current_level.packages or {}
     local level_packages = self._current_level.packages
     for name in pairs(BLE.DBPackages) do
-        if not table.contains(level_packages, name) and not name:begins("all_") and not name:ends("_init") then
+        if not table.contains(level_packages, name) and not name:ends("_init") then
             table.insert(packages, {package = name, name = name})
         end
     end

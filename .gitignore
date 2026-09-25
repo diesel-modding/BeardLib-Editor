@@ -1,5 +1,9 @@
-
-Data/
+Data/Brushes.txt
+Data/HashlistDict.bin
+Data/PackagesPaths.bin
+Data/Paths.bin
+Data/WorldSounds.bin
+Data/game_version.txt
 .vscode/settings.json
 *.log
 version.txt
