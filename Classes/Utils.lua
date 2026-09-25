@@ -460,15 +460,6 @@ function Utils:IsLoaded(asset, type, packages)
     return false
 end
 
-function Utils:InAllPackage(asset, type, packages)
-    for name, package in pairs(packages or BLE.DBPackages) do
-        if package[type] and package[type][asset] then
-            return true
-        end
-    end
-    return false
-end
-
 function Utils:GetPackagesOfUnit(unit, size_needed, packages, first)
     return self:GetPackages(unit, "unit", size_needed, first, packages)
 end
