@@ -8,10 +8,10 @@ function CheckFileMenu:init(data)
     ItemExt:add_funcs(self, self._menu)
     self:lbl("Having trouble finding out why a unit or other file isn't loading properly? You can check it here!", {text_align = "center"})
     self:textbox("Path", ClassClbk(self, "FixPath"), self._last_dir, {text = false, w = 650, border_size = 4})
-    self:small_button("BrowseFile", ClassClbk(self, "OpneFileBrowser"))
+    self:small_button("BrowseFile", ClassClbk(self, "OpneFileBrowser", false))
     self:small_button("BrowseDirectory", ClassClbk(self, "OpneFileBrowser", true))
     self:small_button("Check", ClassClbk(self, "CheckFile"))
-    self._holder = self:pan("ErrorsHolder", {max_height = 600})
+    self._holder = self:pan("ErrorsHolder", {max_height = 600, background_color = Color.blue})
 
     self:AlignItems()
 end
@@ -42,7 +42,7 @@ function CheckFileMenu:CheckFile()
     local folder = FileIO:DirectoryExists(path)
     if not folder then
         if not FileIO:FileExists(path) then
-            self._holder:lbl("File given does not exist! "..tostring(file))
+            self._holder:lbl("File given does not exist! "..tostring(path))
             return
         end
     end
@@ -97,12 +97,10 @@ function CheckFileMenu:DoCheckFile(file)
     if not assets_dir then
         if mod then
             assets_dir = Path:CombineDir(mod.ModPath, "assets")
-        else
-            return
         end
     end
 
-    if not FileIO:Exists(assets_dir) then
+    if not assets_dir or not FileIO:Exists(assets_dir) then
         return
     end
 
@@ -111,15 +109,20 @@ function CheckFileMenu:DoCheckFile(file)
 
     file = Path:Normalize(file):gsub(Path:Normalize(Application:base_path()), "")
 
-    local splt = string.split(file:gsub(Checker.assets_dir, ""), "%.")
+    local splt = string.split(file:gsub(Checker.assets_dir:escape_special(), ""), "%.")
     local path = splt[1]
     local ext = splt[2]
 
     local errors = Checker:CheckFile(ext, path)
-    if errors and  #errors > 0 then
+    if errors and #errors > 0 then
         local color1 = Color(0.6, 0.6, 1)
         local color2 = Color(0.8, 0.2, 1)
-        local s0, e0 = file:find(string.split(file, "%.")[1])
+
+        local s0, e0 = file:find(string.split(file, "%.")[1], 1, true)
+
+        s0 = s0 or 0
+        e0 = e0 or 0
+
         local group = self._holder:group(file, {text = file, range_color = {{s0-1, e0, color1}, {e0, color2}}, background_color = self._menu.background_color, font_size = 18})
         for _, err_file in pairs(errors) do
             if err_file._meta ~= "cooked_physics" then
@@ -157,7 +160,11 @@ function CheckFileMenu:DoCheckFile(file)
         if #group:Items() == 0 then
             group:Destroy()
         end
+    else
+        self._holder:lbl("No errors found on file: " .. file)
     end
+
+    self:AlignItems(true)
 end
 
 function CheckFileMenu:Load(data)
