@@ -35,7 +35,7 @@ function BLTNotificationsGui:mouse_moved(o, x, y)
             return true, "link"
         end
     end
-    return mouse_move(self, x, y)
+    return mouse_move(self, o, x, y)
 end
 
 local mouse_press = BLTNotificationsGui.mouse_pressed
