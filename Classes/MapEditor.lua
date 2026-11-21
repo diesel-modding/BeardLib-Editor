@@ -229,11 +229,13 @@ function Editor:_init_post_effects()
             on = function()
                 self._vp:vp():set_post_processor_effect("World", Idstring("hdr_post_processor"), Idstring(managers.user:get_setting("light_adaption") and "default" or "no_light_adaption"))
 				self._vp:vp():set_post_processor_effect("World", Idstring("bloom_combine_post_processor"), Idstring("bloom_combine"))
+                self._vp:vp():set_post_processor_effect("World", Idstring("contour_post_processor"), Idstring("contour"))
 				--self._vp:force_apply_feeders() Causes weird shaders
 			end,
 			off = function()
 				self._vp:vp():set_post_processor_effect("World", Idstring("hdr_post_processor"), Idstring("empty"))
 				self._vp:vp():set_post_processor_effect("World", Idstring("bloom_combine_post_processor"), Idstring("bloom_combine_empty"))
+                self._vp:vp():set_post_processor_effect("World", Idstring("contour_post_processor"), Idstring("empty"))
 			end
 		},
 		POSTFX_ssao = {
